@@ -1,0 +1,149 @@
+#!/usr/bin/perl
+# Guess what? I wrote another slide system. It is rather hacky.
+# Uses rxvt-unicode escape sequences to change font.
+use 5.014;
+use autodie;
+use B qw(svref_2object);
+use Term::ReadKey;
+use Time::HiRes qw(sleep time);
+$|++;
+
+my $current_font;
+my $i = 0;
+
+my @data = map s/\n//r, <>;
+my($font) = $data[0] =~ /^#\s*font:\s*(.*?)$/;
+my @slides = fix_up_data(@data);
+if ($ENV{DEBUG_DUMP}) {
+  require Data::Dump
+  Data::Dump::pp(\@slides);
+  exit 0;
+}
+
+change_font($font);
+do {
+  show_slide();
+} while(choose_slide());
+
+
+sub show_slide {
+  printf "\e]0;[%d / %d] next: %s\a", $i, scalar @slides,
+    $i == $#slides ? "end" : $slides[$i+1];
+  if($slides[$i] =~ /^=(\S+)(?: (\S+))?/) {
+    my($script, $speed) = ($1, $2);
+    my @opt;
+    push @opt, "-t", "$script.times" if -f "$script.times";
+    $speed ||= 2;
+    change_font("9x15");
+    system "scriptreplay", @opt, $script, $speed;
+    1 while ReadKey -1;
+  } elsif($slides[$i] =~ /^<\s*(\S+)/) {
+    open my $fh, "<", $1 or die $!;
+    my @lines = <$fh>;
+    show_text(join("", @lines), length((sort { length $b <=> length $a } @lines)[0]));
+  } elsif($slides[$i] =~ /^!\s*(.*)/) {
+    system "clear";
+    show_cmd($1);
+  } elsif($slides[$i] =~ /^\$\s*(.*)/) {
+    system "clear";
+    say $slides[$i];
+    show_cmd($1);
+  } else {
+    change_font($font);
+    show_text($slides[$i]);
+  }
+}
+
+sub change_font {
+  my($font) = @_;
+  if($font ne $current_font) {
+    $current_font = $font;
+    print "\e]50;$font\007";
+    print "\e]711;$font\007";
+    sleep 0.2;
+    kill WINCH => -$$;
+    sleep 0.2;
+  }
+}
+
+sub choose_slide {
+  state $last_time;
+  my $key = get_input();
+  if(svref_2object(\$key)->POK) { # Hack, sigh.
+    if($key =~ /\d/) {
+      if ($last_time && time - 2 < $last_time) {
+        $i = $i . $key;
+      } else {
+        $i = $key;
+      }
+      $last_time = time;
+    } elsif($key eq ' ') {
+      $i++;
+    }
+  } elsif($key eq '0') {
+    return $key;
+  } else {
+    $last_time = undef;
+    $i += $key;
+  }
+  $i = 0 if $i < 0;
+  $i = @slides - 1 if $i == @slides;
+  return 1;
+}
+
+sub get_input {
+  my %key_map = (
+    "\x1b[D" => -1,  # Left
+    "\x1b[C" => 1,  # Right
+    "\x1b\x1b\x1b" => 0,  # Esc
+    "q" => 0,  # 'Q'uit
+    "\xc" => '',  # Refresh
+  );
+
+  ReadMode 3;
+  my $key = ReadKey;
+  if($key eq "\x1b") {
+    $key .= ReadKey;
+    $key .= ReadKey;
+  }
+  ReadMode 0;
+
+  return exists $key_map{$key} ? $key_map{$key} : $key;
+}
+
+sub fix_up_data {
+  my @data = @_;
+  # Comments
+  my @slides = grep !/^#/, @data;
+
+  for(my $i = 0; $i < $#slides; ) {
+    $_ = $slides[$i];
+    if(s/^ // && $i > 0) {
+      $slides[$i-1] .= "\n$_";
+      splice @slides, $i, 1;
+    } else {
+      $i++;
+    }
+  }
+  return @slides;
+}
+
+sub show_text {
+  my($text, $len) = @_;
+  my($w, $h) = GetTerminalSize();
+  system "clear";
+  my @n = split /\n/, $text;
+  my $h_pos = ($h/2)-(@n/2-.5);
+  print "\n" x $h_pos;
+  my $i = $len ? 1 : 0;
+  my $indent = $w/2 - (1+$len)/2;
+  for(@n) {
+    $indent = $w/2 - (1+length())/2 if $i++ < 1 || s/^\|//;
+    print " " x $indent, $_, "\n";
+  }
+  print "\n" for 1 .. $h - $h_pos - @n - 1;
+}
+
+sub show_cmd {
+  system @_;
+}

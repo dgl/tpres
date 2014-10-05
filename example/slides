@@ -1,0 +1,55 @@
+# font: xft:Dejavu Sans Mono:pixelsize=24
+# ^^ optional, must be first line.
+# Comments are supported.
+# This is an example presentation, based on a talk I gave about Vim Encyption at OggCamp 14.
+Vim encryption
+ |@davidgl
+# The | is a continuation character to allow multiple line slides
+Or: Encryption is hard
+# A bit of background, Vim has built in symmetric encryption
+Vim has built in encryption
+# Several methods, zip was very broken, blowfish was believed to strong
+# This runs the command given
+!vim -c ':help cryptmethod'
+# https://github.com/search?q=%22%3Aset+cm%3Dblowfish%22&ref=simplesearch&type=Code&utf8=%E2%9C%93
+# https://github.com/search?utf8=%E2%9C%93&q=%22%3Aset+cryptmethod%3Dblowfish%22&type=Code&ref=searchresults
+A few people use it.
+!echo OggCamp > test1; vim test1
+# This variant runs the command given but shows the command.
+$ hd test1
+!yes OggCamp | head -10 > test2; vim test2
+$ hd test2
+# Block cipher: This means it operates on some number of bytes at a time
+# http://en.wikipedia.org/wiki/Blowfish_(cipher)
+Blowfish
+$ echo -n OggCamp | openssl enc -K 1234abcd -bf-ecb | hd
+$ yes OggCamp | head -10 | openssl enc -K 1234abcd -bf-ecb | hd
+# Images are just done by shelling out to feh
+# (Images not included, they come from Wikipedia, see
+# http://upload.wikimedia.org/wikipedia/commons/5/56/Tux.jpg and images linked
+# from http://en.wikipedia.org/wiki/Block_cipher_mode_of_operation)
+!feh -FZ Tux.jpg
+!feh -FZ Tux_secure.jpg
+!feh -FZ Tux_ecb.jpg
+!feh -B white -FZ 1024px-CFB_encryption.svg.png
+plain text XOR keystream = cipher text
+8 XOR 10 = 2
+? XOR 10 = 9
+10 XOR 9 = 3
+$ yes OggCamp | head -10 | openssl enc -K 1234abcd -iv $RANDOM -bf | hd
+# Initialisation vector: Additional randomness to ensure reuse doesn't allow recovery of keystream
+Initialisation vector
+$ egrep '^[A-Za-z]{7}$' /usr/share/dict/words | shuf -n 20 > file
+$ cat file
+$ vim --cmd 'set cm=blowfish' -c 'set key=foo' -c w -c q file
+# This file is at http://d.cx/vim-blowfish
+$ time perl vim-blowfish-bruteforce.pl file
+Vim 7.4.399
+ |:set cryptmethod=blowfish2
+Questions?
+ |
+ |http://d.cx/vim-blowfish
+# I didn't use this in the talk, but the scriptreplay stuff works like this:
+# (1.5 being the speed adjustment)
+=cryptmethod 1.5
+.
